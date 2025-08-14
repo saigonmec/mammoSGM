@@ -1,0 +1,12 @@
+torch>=1.10
+torchvision
+timm
+albumentations>=1.3.0
+opencv-python
+scikit-learn
+pandas
+numpy
+Pillow
+pyyaml
+tqdm
+#fastervit
