@@ -1,7 +1,8 @@
 import torch.nn as nn
 import torchvision.models as models
 import timm.models as timm_models
-from fastervit import create_model
+
+# from fastervit import create_model
 import torch.hub as hub
 import torch.serialization
 import argparse
