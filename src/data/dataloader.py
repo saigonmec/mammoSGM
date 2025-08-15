@@ -64,6 +64,8 @@ def load_metadata(data_folder, config_path="config/config.yaml"):
     metadata_path = os.path.join(data_folder, "metadata.csv")
     df = pd.read_csv(metadata_path)
     df = df.drop_duplicates(subset=["link"])
+    # Filter NaN in target label column
+    df = df[df[target_column].notna()]
     if not np.issubdtype(df[target_column].dtype, np.number):
         df["target_label"], class_names = pd.factorize(df[target_column])
         label_col = "target_label"
