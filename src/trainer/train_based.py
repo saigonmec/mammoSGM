@@ -66,6 +66,7 @@ def run_train(
     patience=50,
     loss_type="ce",
     model_type=None,  # thêm model_type để truyền vào
+    pretrained_model_path=None,  # thêm tham số này
 ):
     train_df, test_df, train_loader, test_loader, model, device = (
         prepare_data_and_model(
@@ -74,6 +75,7 @@ def run_train(
             batch_size,
             config_path=config_path,
             img_size=img_size,
+            pretrained_model_path=pretrained_model_path,  # truyền vào đây
         )
     )
     model_name = f"{model_type}" if model_type else "based"
@@ -176,6 +178,7 @@ if __name__ == "__main__":
             patience=patience,
             loss_type=loss_type,
             model_type=model_type,  # truyền vào để tạo model_name
+            pretrained_model_path=pretrained_model_path,  # truyền vào đây
         )
     elif args.mode == "test":
         run_test(

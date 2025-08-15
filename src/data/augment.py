@@ -6,8 +6,8 @@ from albumentations.pytorch import ToTensorV2
 import cv2
 
 
-def get_base_augmentations():
-    return [
+def get_base_augmentations(enable_rotate90=True):
+    aug_list = [
         A.OneOf(
             [
                 A.Downscale(
@@ -46,7 +46,6 @@ def get_base_augmentations():
         ),
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.5),
-        A.RandomRotate90(p=0.5),
         A.Transpose(p=0.5),
         A.Affine(
             scale=(0.9, 1.1),
@@ -67,13 +66,18 @@ def get_base_augmentations():
         ),
         A.GaussNoise(p=0.1),
     ]
+    if enable_rotate90:
+        aug_list.insert(5, A.RandomRotate90(p=0.5))  # Insert after VerticalFlip
+    return aug_list
 
 
-def get_train_augmentation(height, width, extra_aug=None, resize_first=True):
+def get_train_augmentation(
+    height, width, extra_aug=None, resize_first=True, enable_rotate90=True
+):
     aug_list = []
     if resize_first:
         aug_list.append(A.Resize(height, width))
-    aug_list += get_base_augmentations()
+    aug_list += get_base_augmentations(enable_rotate90=enable_rotate90)
     # if not resize_first:
     #    aug_list.append(A.Resize(height, width))
     if extra_aug:

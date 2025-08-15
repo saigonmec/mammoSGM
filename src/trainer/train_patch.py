@@ -61,6 +61,7 @@ def run_train(
     loss_type="ce",
     model_type=None,
     img_size=None,
+    pretrained_model_path=None,  # thêm tham số này
 ):
     train_df, test_df, train_loader, test_loader, model, device = (
         prepare_data_and_model(
@@ -70,6 +71,7 @@ def run_train(
             config_path=config_path,
             num_patches=num_patches,
             arch_type=arch_type,
+            pretrained_model_path=pretrained_model_path,  # truyền vào đây
             img_size=img_size,
         )
     )
@@ -159,6 +161,9 @@ if __name__ == "__main__":
             "mil_v7",
             "mil_v8",
             "mil_v9",
+            "mil_v10",  # added v10
+            "mil_v11",  # added v11
+            "mil_v12",  # added v12
         ],
     )
     parser.add_argument("--img_size", type=str, default=None)
@@ -206,6 +211,7 @@ if __name__ == "__main__":
             loss_type=loss_type,
             model_type=model_type,
             img_size=img_size,
+            pretrained_model_path=pretrained_model_path,  # truyền vào đây
         )
     elif args.mode == "test":
         run_test(

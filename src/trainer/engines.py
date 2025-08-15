@@ -79,15 +79,32 @@ def evaluate_model(model, data_loader, device="cpu", mode="Test", return_loss=Fa
         sen = recall
         spec = None
 
-    print(f"{mode} Accuracy: {acc * 100:.2f}% | Loss: {avg_loss:.4f}")
+    # Gọn lại phần in ra
+    acc_loss_str = f"{mode} Accuracy : {acc * 100:.2f}% | Loss: {avg_loss:.4f}"
     if auc is not None:
-        print(f"{mode} AUC: {auc * 100:.2f}%")
+        acc_loss_str += f" | AUC: {auc * 100:.2f}%"
+    print(acc_loss_str)
     print(
-        f"{mode} Precision: {precision * 100:.2f}% | Recall (Sensitivity): {recall * 100:.2f}%"
+        f"{mode} Precision: {precision * 100:.2f}% | Sens: {recall * 100:.2f}%"
+        + (f" | Spec: {spec * 100:.2f}%" if spec is not None else "")
     )
-    if spec is not None:
-        print(f"{mode} Specificity: {spec * 100:.2f}%")
+
+    # In thông số tốt nhất nếu có
+    if hasattr(evaluate_model, "best_acc"):
+        best_str = f"Best Accuracy : {evaluate_model.best_acc * 100:.2f}%"
+        if hasattr(evaluate_model, "best_loss"):
+            best_str += f" | Loss: {evaluate_model.best_loss:.4f}"
+        if hasattr(evaluate_model, "best_auc") and evaluate_model.best_auc is not None:
+            best_str += f" | AUC: {evaluate_model.best_auc * 100:.2f}%"
+        print(best_str)
+    # Cập nhật best nếu tốt hơn
+    if not hasattr(evaluate_model, "best_acc") or acc > evaluate_model.best_acc:
+        evaluate_model.best_acc = acc
+        evaluate_model.best_loss = avg_loss
+        evaluate_model.best_auc = auc
+
     print(classification_report(all_labels, all_preds, digits=4, zero_division=0))
+
     return (avg_loss, acc) if return_loss else acc
 
 

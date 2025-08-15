@@ -170,6 +170,8 @@ class MILClassifierV2(nn.Module):
 
 
 class _GatedAttnPool(nn.Module):
+    """Gated Attention Pooling (compatible with all MILClassifier versions)"""
+
     def __init__(self, d_model: int, hidden: int = 256, dropout: float = 0.1):
         super().__init__()
         self.V = nn.Linear(d_model, hidden)
@@ -184,8 +186,11 @@ class _GatedAttnPool(nn.Module):
         nn.init.constant_(self.w.bias, 0.0)
 
     def forward(
-        self, x: torch.Tensor, mask: torch.Tensor = None, temperature: float = 1.0
-    ):
+        self,
+        x: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
+        temperature: float = 1.0,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         v = torch.tanh(self.V(x))
         u = torch.sigmoid(self.U(x))
         scores = self.w(self.drop(v * u)).squeeze(-1)
@@ -540,34 +545,6 @@ class MILClassifierV5(nn.Module):
         return logits
 
 
-class _GatedAttnPool(nn.Module):
-    """Gated Attention Pooling (from MILClassifierV5, reused for compatibility)"""
-
-    def __init__(self, d_model: int, hidden: int, dropout: float = 0.1):
-        super().__init__()
-        self.attn = nn.Sequential(
-            nn.Linear(d_model, hidden),
-            nn.Tanh(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden, 1),
-        )
-        self.gate = nn.Sequential(
-            nn.Linear(d_model, hidden), nn.Sigmoid(), nn.Dropout(dropout)
-        )
-
-    def forward(
-        self, x: torch.Tensor, mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        attn_scores = self.attn(x)
-        gate = self.gate(x)
-        attn_weights = F.softmax(attn_scores * gate, dim=1)
-        if mask is not None:
-            attn_weights = attn_weights * mask
-            attn_weights = attn_weights / (attn_weights.sum(dim=1, keepdim=True) + 1e-8)
-        pooled = torch.sum(x * attn_weights, dim=1)
-        return pooled, attn_weights
-
-
 class MILClassifierV6(nn.Module):
     """
     MILClassifierV6: Enhanced MIL classifier based on Local Extremum Mapping (LEM)
@@ -889,9 +866,7 @@ class MILClassifierV7(nn.Module):
         top_patch_feats = self.local_proj(top_patch_feats)  # (B, fusion_dim)
 
         # Fusion: simple concatenation
-        fused = torch.cat(
-            [global_feats, top_patch_feats], dim=-1
-        )  # (B, fusion_dim * 2)
+        fused = torch.cat([global_feats, top_patch_feats], dim=-1)  # (B, fusion_dim)
 
         # Classification
         logits = self.head(fused)
@@ -899,4 +874,290 @@ class MILClassifierV7(nn.Module):
         self.last_patch_score = patch_scores.detach()
         self.last_top_patch_idx = top_patch_idx.detach()
 
+        return logits
+
+
+class MILClassifierV8(nn.Module):
+    """
+    MILClassifierV8: Simple classifier combining global and top-K local patch features
+    - Uses ResNet50 for both global and patch feature extraction
+    - Selects top-K patches based on linear scoring
+    - Fuses global and local features with weighted sum
+    - Designed to be lightweight, avoiding MIL pooling or complex attention
+    """
+
+    def __init__(
+        self,
+        base_model: nn.Module,  # ResNet50 backbone
+        feature_dim: int,  # Backbone output dim (e.g., 2048 for ResNet50)
+        num_classes: int = 1,
+        top_k: int = 5,  # Number of top patches to select
+        fusion_dim: int = 512,  # Reduced dimension for fusion
+        dropout: float = 0.3,  # Dropout for regularization
+    ):
+        super().__init__()
+        self.base_model = base_model
+        self.feature_dim = feature_dim
+        self.num_classes = num_classes
+        self.top_k = top_k
+
+        # Patch scoring for top-K selection
+        self.patch_scorer = nn.Linear(feature_dim, 1)
+
+        # Projection layers
+        self.global_proj = nn.Sequential(
+            nn.Linear(feature_dim, fusion_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+        )
+        self.local_proj = nn.Sequential(
+            nn.Linear(feature_dim, fusion_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+        )
+
+        # Fusion weights (learnable)
+        self.fusion_weights = nn.Parameter(torch.tensor([0.7, 0.3]))  # [global, local]
+
+        # Classification head
+        self.head = nn.Sequential(
+            nn.Linear(fusion_dim, fusion_dim // 2),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(fusion_dim // 2, num_classes),
+        )
+
+        self._init_weights()
+        self.last_patch_scores = None
+        self.last_topk_indices = None
+        self.last_fusion_weights = None
+
+    def _init_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.kaiming_normal_(
+                    module.weight, mode="fan_out", nonlinearity="relu"
+                )
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0.0)
+        nn.init.constant_(self.fusion_weights, 0.5)  # Initialize equal weights
+
+    def _encode_patches(self, x: torch.Tensor) -> torch.Tensor:
+        B, N, C, H, W = x.shape
+        x_ = x.contiguous().view(B * N, C, H, W)
+        feats = self.base_model(x_)
+        if feats.dim() == 4:
+            feats = F.adaptive_avg_pool2d(feats, 1).squeeze(-1).squeeze(-1)
+        feats = feats.view(B, N, -1)
+        return feats
+
+    def _encode_global(self, global_img: torch.Tensor) -> torch.Tensor:
+        feats = self.base_model(global_img)
+        if feats.dim() == 4:
+            feats = F.adaptive_avg_pool2d(feats, 1).squeeze(-1).squeeze(-1)
+        return feats
+
+    def forward(
+        self, x_patches: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        B, N_plus_1, C, H, W = x_patches.shape
+        N = N_plus_1 - 1
+        x_local = x_patches[:, :N]  # (B, N, C, H, W)
+        x_global = x_patches[:, N]  # (B, C, H, W)
+
+        # Encode global feature
+        global_feats = self._encode_global(x_global)  # (B, feature_dim)
+        global_feats = self.global_proj(global_feats)  # (B, fusion_dim)
+
+        # Encode patches and select top-K
+        local_feats = self._encode_patches(x_local)  # (B, N, feature_dim)
+        patch_scores = self.patch_scorer(local_feats).squeeze(-1)  # (B, N)
+        if mask is not None:
+            patch_scores = patch_scores.masked_fill(mask == 0, -1e9)
+        k = min(self.top_k, N)
+        _, topk_indices = torch.topk(patch_scores, k=k, dim=1)  # (B, k)
+        topk_feats = local_feats.gather(
+            1, topk_indices.unsqueeze(-1).expand(-1, -1, self.feature_dim)
+        )  # (B, k, feature_dim)
+        topk_feats = self.local_proj(topk_feats)  # (B, k, fusion_dim)
+        local_feats = topk_feats.mean(dim=1)  # (B, fusion_dim)
+
+        # Fusion: weighted sum
+        fusion_weights = F.softmax(
+            self.fusion_weights, dim=0
+        )  # [global_weight, local_weight]
+        fused = (
+            fusion_weights[0] * global_feats + fusion_weights[1] * local_feats
+        )  # (B, fusion_dim)
+
+        # Classification
+        logits = self.head(fused)
+
+        self.last_patch_scores = patch_scores.detach()
+        self.last_topk_indices = topk_indices.detach()
+        self.last_fusion_weights = fusion_weights.detach()
+
+        return logits
+
+
+class MILClassifierV9(nn.Module):
+    """
+    MILClassifierV9: Minimal MIL classifier mimicking ResNet50 baseline
+    - Prioritizes global feature (90%) like ResNet50 with linear head
+    - Uses top-1 patch for minimal local contribution (10%) for paper novelty
+    - No dropout, no projection layers, fixed fusion weights
+    - Robust for small N (2-5 patches), optimized for fast training
+    """
+
+    def __init__(
+        self,
+        base_model: nn.Module,  # ResNet50 backbone
+        feature_dim: int,  # Backbone output dim (e.g., 2048 for ResNet50)
+        num_classes: int = 1,
+        max_patches: int = 5,  # Max number of patches (N=2-5)
+    ):
+        super().__init__()
+        self.base_model = base_model
+        self.feature_dim = feature_dim
+        self.num_classes = num_classes
+        self.max_patches = max_patches
+
+        # Patch scoring for top-1 selection (minimal MIL for paper)
+        self.patch_scorer = nn.Linear(feature_dim, 1)
+
+        # Fixed fusion weights (global dominates)
+        self.fusion_weights = torch.tensor([0.6, 0.4])  # [global, local]
+
+        # Linear head (like ResNet50 baseline)
+        self.head = nn.Linear(feature_dim, num_classes)
+
+        self._init_weights()
+        self.last_patch_scores = None
+        self.last_top_patch_idx = None
+        self.last_fusion_weights = None
+
+    def _init_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.kaiming_normal_(
+                    module.weight, mode="fan_out", nonlinearity="relu"
+                )
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0.0)
+
+    def _encode_patches(self, x: torch.Tensor) -> torch.Tensor:
+        B, N, C, H, W = x.shape
+        if N > self.max_patches:
+            raise ValueError(
+                f"Number of patches ({N}) exceeds max_patches ({self.max_patches})"
+            )
+        x_ = x.contiguous().view(B * N, C, H, W)
+        feats = self.base_model(x_)
+        if feats.dim() == 4:
+            feats = F.adaptive_avg_pool2d(feats, 1).squeeze(-1).squeeze(-1)
+        feats = feats.view(B, N, -1)
+        return feats
+
+    def _encode_global(self, global_img: torch.Tensor) -> torch.Tensor:
+        feats = self.base_model(global_img)
+        if feats.dim() == 4:
+            feats = F.adaptive_avg_pool2d(feats, 1).squeeze(-1).squeeze(-1)
+        return feats
+
+    def forward(
+        self, x_patches: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        B, N_plus_1, C, H, W = x_patches.shape
+        N = N_plus_1 - 1
+        x_local = x_patches[:, :N]  # (B, N, C, H, W)
+        x_global = x_patches[:, N]  # (B, C, H, W)
+
+        # Encode global feature (main path)
+        global_feats = self._encode_global(x_global)  # (B, feature_dim)
+
+        # Encode patches and select top-1 (minimal MIL)
+        local_feats = self._encode_patches(x_local)  # (B, N, feature_dim)
+        patch_scores = self.patch_scorer(local_feats).squeeze(-1)  # (B, N)
+        if mask is not None:
+            patch_scores = patch_scores.masked_fill(mask == 0, -1e9)
+        top_patch_idx = torch.argmax(patch_scores, dim=1)  # (B,)
+        top_patch_feats = local_feats[
+            torch.arange(B), top_patch_idx
+        ]  # (B, feature_dim)
+
+        # Fusion: fixed weighted sum (global 90%, local 10%)
+        fusion_weights = self.fusion_weights.to(global_feats.device)
+        fused = (
+            fusion_weights[0] * global_feats + fusion_weights[1] * top_patch_feats
+        )  # (B, feature_dim)
+
+        # Classification (linear head like ResNet50)
+        logits = self.head(fused)
+
+        self.last_patch_scores = patch_scores.detach()
+        self.last_top_patch_idx = top_patch_idx.detach()
+        self.last_fusion_weights = fusion_weights.detach()
+
+        return logits
+
+
+class MILClassifierV10(nn.Module):
+    """
+    MILClassifierV10: Only uses global feature for classification.
+    Local features are encoded but not used in prediction.
+    """
+
+    def __init__(
+        self,
+        base_model: nn.Module,  # Backbone (e.g., ResNet50)
+        feature_dim: int,  # Output dim of backbone (e.g., 2048)
+        num_classes: int = 1,
+    ):
+        super().__init__()
+        self.base_model = base_model
+        self.feature_dim = feature_dim
+        self.num_classes = num_classes
+
+        self.head = nn.Linear(feature_dim, num_classes)
+        self._init_weights()
+
+    def _init_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.kaiming_normal_(
+                    module.weight, mode="fan_out", nonlinearity="relu"
+                )
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0.0)
+
+    def _encode_patches(self, x: torch.Tensor) -> torch.Tensor:
+        # Local features are encoded but not used
+        B, N, C, H, W = x.shape
+        x_ = x.contiguous().view(B * N, C, H, W)
+        feats = self.base_model(x_)
+        if feats.dim() == 4:
+            feats = F.adaptive_avg_pool2d(feats, 1).squeeze(-1).squeeze(-1)
+        feats = feats.view(B, N, -1)
+        return feats
+
+    def _encode_global(self, global_img: torch.Tensor) -> torch.Tensor:
+        feats = self.base_model(global_img)
+        if feats.dim() == 4:
+            feats = F.adaptive_avg_pool2d(feats, 1).squeeze(-1).squeeze(-1)
+        return feats
+
+    def forward(
+        self, x_patches: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        B, N_plus_1, C, H, W = x_patches.shape
+        N = N_plus_1 - 1
+        x_local = x_patches[:, :N]  # (B, N, C, H, W)
+        x_global = x_patches[:, N]  # (B, C, H, W)
+
+        # Encode local features (not used)
+        # _ = self._encode_patches(x_local)
+
+        # Encode global feature (used for prediction)
+        global_feats = self._encode_global(x_global)  # (B, feature_dim)
+        logits = self.head(global_feats)
         return logits

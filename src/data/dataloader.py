@@ -74,6 +74,17 @@ def load_metadata(data_folder, config_path="config/config.yaml"):
     test_df = df[df["split"] == "test"].copy()
     train_df["cancer"] = train_df[label_col]
     test_df["cancer"] = test_df[label_col]
+
+    print("Train set class distribution:")
+    print(train_df[label_col].value_counts())
+    print("Test set class distribution:")
+    print(test_df[label_col].value_counts())
+    # Nếu có nhiều hơn 2 class, in ra danh sách class
+    if train_df[label_col].nunique() > 2:
+        print(
+            "Detected multi-class classification. Classes:",
+            list(class_names),
+        )
     return train_df, test_df, class_names
 
 
