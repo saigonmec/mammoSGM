@@ -23,18 +23,39 @@ def get_based_model(model_type="resnet50", num_classes=2):
         "resnest101",
         "resnest50s2",
         "regnety",
-        "convnextv2",
+        "convnextv2base",
         "convnextv2_tiny",
         "efficientnetv2",
+        "efficientnetv2s",
     ]:
-        model, _ = get_timm_backbone(model_type)
-        # timm backbone already has num_classes argument in create_model
-        model.default_cfg["num_classes"] = num_classes
+        model, feature_dim = get_timm_backbone(model_type)
+        # Replace the head with a linear classifier for all timm backbones
+        if hasattr(model, "fc"):
+            model.fc = get_linear_head(feature_dim, num_classes)
+        elif hasattr(model, "head") and hasattr(model.head, "fc"):
+            model.head.fc = get_linear_head(feature_dim, num_classes)
+        elif hasattr(model, "head"):
+            model.head = get_linear_head(feature_dim, num_classes)
+        elif hasattr(model, "classifier"):
+            model.classifier = get_linear_head(feature_dim, num_classes)
+        else:
+            raise ValueError("Unknown head structure for timm backbone")
     elif model_type == "fastervit":
         model, feature_dim = get_fastervit_backbone()
         model.head = get_linear_head(feature_dim, num_classes)
-    elif model_type == "dinov2":
-        transformer, feature_dim = get_dino_backbone()
+    elif model_type in [
+        "dinov2",
+        "dinov2_vitb14",
+        "dinov2_vits14",
+        "dinov3_vits16",
+        "dinov3_vits16plus",
+        "dinov3_vitb16",
+        "dinov3_convnext_tiny",
+        "dinov3_convnext_small",
+    ]:
+        # Map "dinov2" to default dinov2_vitb14
+        dino_type = "dinov2_vitb14" if model_type == "dinov2" else model_type
+        transformer, feature_dim = get_dino_backbone(dino_type)
 
         class DinoVisionTransformerClassifier(nn.Module):
             def __init__(self, transformer, feature_dim, num_classes):
@@ -44,11 +65,17 @@ def get_based_model(model_type="resnet50", num_classes=2):
 
             def forward(self, x):
                 x = self.transformer(x)
-                x = self.transformer.norm(x)
+                # Some DINOv3 backbones may not have .norm, check before using
+                if hasattr(self.transformer, "norm"):
+                    x = self.transformer.norm(x)
                 x = self.classifier(x)
                 return x
 
         model = DinoVisionTransformerClassifier(transformer, feature_dim, num_classes)
+        # Freeze backbone only if using dinov3
+        if model_type.startswith("dinov3"):
+            for param in model.transformer.parameters():
+                param.requires_grad = False
     else:
         raise ValueError("Unsupported model_type for base model")
     return model

@@ -8,7 +8,7 @@ config:
   gradcam: False
   gradcam_num_images: 3
   gradcam_random_state: 29
-  patience: 80
+  patience: 70
   loss_type: "focal"
   image_size: 448
   target_column: "cancer"

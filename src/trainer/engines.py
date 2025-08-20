@@ -57,18 +57,27 @@ def evaluate_model(model, data_loader, device="cpu", mode="Test", return_loss=Fa
         )
     except Exception:
         auc = None
-    precision = precision_score(
-        all_labels,
-        all_preds,
-        average="binary" if len(set(all_labels)) == 2 else "macro",
-        zero_division=0,
-    )
-    recall = recall_score(
-        all_labels,
-        all_preds,
-        average="binary" if len(set(all_labels)) == 2 else "macro",
-        zero_division=0,
-    )
+    # Calculate precision and recall safely for binary/multiclass and degenerate cases
+    try:
+        precision = precision_score(
+            all_labels,
+            all_preds,
+            average="binary" if len(set(all_labels)) == 2 else "macro",
+            zero_division=0,
+        )
+    except Exception:
+        precision = 0.0
+        pass
+    try:
+        recall = recall_score(
+            all_labels,
+            all_preds,
+            average="binary" if len(set(all_labels)) == 2 else "macro",
+            zero_division=0,
+        )
+    except Exception:
+        recall = 0.0
+        pass
     cm = confusion_matrix(all_labels, all_preds)
     # Sensitivity (Recall) và Specificity
     if cm.shape == (2, 2):
@@ -388,6 +397,23 @@ def train_model(
         writer.writerow(
             [datetime.now().isoformat(), "finished", "", "", "", "", "", "", ""]
         )
+
+    # Evaluate best weight trong top2_accs
+    if top2_accs:
+        best_acc = max(top2_accs)
+        best_weight_name = f"{model_key}_{int(round(best_acc * 10000))}.pth"
+        best_weight_path = os.path.join(model_dir, best_weight_name)
+        if os.path.exists(best_weight_path):
+            print(
+                f"\n🔎 Evaluating best model: {best_weight_name} (acc={best_acc:.4f})"
+            )
+            model.load_state_dict(torch.load(best_weight_path, map_location=device))
+            evaluate_model(model, test_loader, device=device, mode="Best Test")
+        else:
+            print(f"Best weight file {best_weight_name} not found.")
+    else:
+        print("No best weight found for evaluation.")
+
     print(f"Training log saved to {log_file}")
     print(f"{model_name} training finished.")
     return model

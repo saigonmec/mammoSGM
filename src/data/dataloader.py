@@ -11,17 +11,40 @@ def print_dataset_stats2(train_df, test_df, name="Dataset"):
     print(f"Total samples: {total}")
     print(f"  - Train: {len(train_df)} ({len(train_df) / total:.1%})")
     print(f"  - Test:  {len(test_df)} ({len(test_df) / total:.1%})")
-    if "patient_id" in train_df.columns or "patient_id" in test_df.columns:
-        n_train_patients = (
-            train_df["patient_id"].nunique()
-            if "patient_id" in train_df.columns
-            else "N/A"
-        )
-        n_test_patients = (
-            test_df["patient_id"].nunique()
-            if "patient_id" in test_df.columns
-            else "N/A"
-        )
+
+    # Check for patient_id, id, or image_id columns (case-insensitive, but keep original name)
+    def find_col(df, candidates):
+        df_cols = list(df.columns)
+        for col in candidates:
+            for c in df_cols:
+                if c.lower() == col:
+                    return c
+        return None
+
+    patient_id_col_train = find_col(train_df, ["patient_id", "id", "image_id"])
+    patient_id_col_test = find_col(test_df, ["patient_id", "id", "image_id"])
+    patient_id_col = patient_id_col_train or patient_id_col_test
+    if patient_id_col is not None:
+
+        def normalize_pid(val):
+            if isinstance(val, str):
+                for suffix in ["_R", "_L", "_MLO", "_CC"]:
+                    idx = val.find(suffix)
+                    if idx > 0:  # chỉ cắt nếu phía trước suffix còn giá trị
+                        return val[:idx]
+                return val
+            return val
+
+        if patient_id_col_train is not None:
+            n_train_patients = (
+                train_df[patient_id_col_train].map(normalize_pid).nunique()
+            )
+        else:
+            n_train_patients = "N/A"
+        if patient_id_col_test is not None:
+            n_test_patients = test_df[patient_id_col_test].map(normalize_pid).nunique()
+        else:
+            n_test_patients = "N/A"
         print(f"Unique patients (train): {n_train_patients}")
         print(f"Unique patients (test):  {n_test_patients}")
     print("\nLabel distribution (cancer):")
