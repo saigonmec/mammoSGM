@@ -152,7 +152,9 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str)
     parser.add_argument("--mode", type=str, choices=["train", "test"], default="train")
     parser.add_argument("--patience", type=int)
-    parser.add_argument("--loss_type", type=str, choices=["ce", "focal"])
+    parser.add_argument(
+        "--loss_type", type=str, choices=["ce", "focal", "focal2", "ldam"]
+    )
     parser.add_argument(
         "--img_size", type=str, default=None, help="Image size, e.g. 448 or 448x448"
     )

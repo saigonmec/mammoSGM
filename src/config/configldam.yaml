@@ -8,9 +8,9 @@ config:
   gradcam: False
   gradcam_num_images: 3
   gradcam_random_state: 29
-  patience: 80
-  loss_type: "focal"
+  patience: 70
+  loss_type: "ldam"
   image_size: 448
-  target_column: "label"
-  num_patches: 4  # Số patch (2, 3, hoặc 4)
+  target_column: "cancer"
+  num_patches: 3  # Số patch (2, 3, hoặc 4)
   arch_type: patch_resnet # patch_transformer

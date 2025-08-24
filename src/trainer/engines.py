@@ -15,11 +15,13 @@ from sklearn.metrics import (
 import csv
 from datetime import datetime
 
-from src.utils.loss import FocalLoss
+from src.utils.loss import FocalLoss, LDAMLoss, FocalLoss2
 from src.utils.plot import plot_metrics, plot_confusion_matrix
 
 
-def evaluate_model(model, data_loader, device="cpu", mode="Test", return_loss=False):
+def evaluate_model(
+    model, data_loader, device="cpu", mode="Test", return_loss=False, criterion=None
+):
     # Multi-GPU unwrap if needed
     if isinstance(model, nn.DataParallel):
         model = model.module
@@ -31,7 +33,9 @@ def evaluate_model(model, data_loader, device="cpu", mode="Test", return_loss=Fa
     all_preds = []
     all_probs = []
     total_loss = 0.0
-    criterion = nn.CrossEntropyLoss()
+    # Use the same criterion as training if provided, else fallback to CrossEntropyLoss
+    if criterion is None:
+        criterion = nn.CrossEntropyLoss()
 
     with torch.no_grad():
         for batch in data_loader:
@@ -164,6 +168,15 @@ def train_model(
     if loss_type == "focal":
         criterion = FocalLoss(alpha=weights)
         print("Using Focal Loss")
+    elif loss_type == "ldam":
+        criterion = LDAMLoss(
+            cls_num_list=train_df["cancer"].value_counts().sort_index().tolist(),
+            weight=weights,  # truyền weight vào LDAMLoss
+        ).to(device)
+        print("Using LDAM Loss")
+    elif loss_type == "focal2":
+        criterion = FocalLoss2(alpha=weights)
+        print("Using Focal Loss v2")
     else:
         criterion = nn.CrossEntropyLoss(weight=weights)
         print(
@@ -293,7 +306,12 @@ def train_model(
         )
 
         test_loss, test_acc = evaluate_model(
-            model, test_loader, device=device, mode="Test", return_loss=True
+            model,
+            test_loader,
+            device=device,
+            mode="Test",
+            return_loss=True,
+            criterion=criterion,
         )
         test_losses.append(test_loss)
         test_accs.append(test_acc)
@@ -435,7 +453,9 @@ def train_model(
                 )
             else:
                 model.load_state_dict(torch.load(best_weight_path, map_location=device))
-            evaluate_model(model, test_loader, device=device, mode="Best Test")
+            evaluate_model(
+                model, test_loader, device=device, mode="Best Test", criterion=criterion
+            )
         else:
             print(f"Best weight file {best_weight_name} not found.")
     else:
