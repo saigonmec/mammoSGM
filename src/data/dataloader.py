@@ -117,7 +117,7 @@ def get_model_key(
     return f"{base_model_key}_{patch_suffix}"
 
 
-def load_metadata(data_folder, config_path="config/config.yaml"):
+def load_metadata(data_folder, config_path="config/config.yaml", print_stats=True):
     target_column = get_target_column_from_config(config_path)
     metadata_path = os.path.join(data_folder, "metadata.csv")
     df = pd.read_csv(metadata_path)
@@ -144,13 +144,14 @@ def load_metadata(data_folder, config_path="config/config.yaml"):
     train_df["cancer"] = train_df[label_col]
     test_df["cancer"] = test_df[label_col]
 
-    print_dataset_stats2(train_df, test_df, name="Dataset")
-    # Nếu có nhiều hơn 2 class, in ra danh sách class
-    if train_df[label_col].nunique() > 2:
-        print(
-            "Detected multi-class classification. Classes:",
-            list(class_names),
-        )
+    if print_stats:
+        print_dataset_stats2(train_df, test_df, name="Dataset")
+        # Nếu có nhiều hơn 2 class, in ra danh sách class
+        if train_df[label_col].nunique() > 2:
+            print(
+                "Detected multi-class classification. Classes:",
+                list(class_names),
+            )
     return train_df, test_df, class_names
 
 

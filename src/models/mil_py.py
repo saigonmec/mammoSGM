@@ -286,16 +286,22 @@ class MILClassifierV3(nn.Module):
         x_global = x_patches[:, N]  # (B, C, H, W)
 
         feats_l = self._encode_patches(x_local)
-        pooled_l, attn = self.mil_pool(feats_l, mask=mask, temperature=1.0)
-        feats_g = self._encode_global(x_global)
+        pooled_l, attn = self.mil_pool(
+            feats_l, mask=mask, temperature=1.0
+        )  # (B, feature_dim)
+        feats_g = self._encode_global(x_global)  # (B, feature_dim)
 
         if self.fusion == "concat":
-            fused = torch.cat([pooled_l, feats_g], dim=1)
+            fused = torch.cat([pooled_l, feats_g], dim=1)  # (B, 2*feature_dim)
+            fused = self.head[0](fused)  # LayerNorm
+            fused = self.head[1](fused)  # Dropout
+            logits = self.head[2](fused)  # Linear
         else:
             g_proj = self.global_to_local(feats_g)
             gate = self.gate(torch.cat([pooled_l, g_proj], dim=1))
             fused = gate * pooled_l + (1.0 - gate) * g_proj
-        logits = self.head(fused)
+            logits = self.head(fused)
+
         self.last_attn_weights = attn.detach()
         self.last_global_feat = feats_g.detach()
         self.last_local_feat = pooled_l.detach()
@@ -334,21 +340,21 @@ class MILClassifierV4(nn.Module):
             d_model=feature_dim, hidden=attn_hidden, dropout=attn_dropout
         )
 
-        # Cross-attention: global feature làm query, ALL local patches làm key/value
-        self.cross_attn = nn.MultiheadAttention(
-            embed_dim=feature_dim, num_heads=cross_attn_heads, batch_first=True
-        )
-        self.global_proj = nn.Linear(feature_dim, feature_dim)
-
-        # Fusion layers for 'concat' and 'fuse'
-        if fusion == "concat":
+        # Only create cross-attention and global_proj if needed
+        if fusion == "cross_attention":
+            self.cross_attn = nn.MultiheadAttention(
+                embed_dim=feature_dim, num_heads=cross_attn_heads, batch_first=True
+            )
+            self.global_proj = nn.Linear(feature_dim, feature_dim)
+        elif fusion == "concat":
             self.fusion_proj = nn.Sequential(
                 nn.LayerNorm(feature_dim * 2),
                 nn.Dropout(head_dropout),
-                nn.Linear(feature_dim * 2, feature_dim),
+                nn.Linear(feature_dim * 2, feature_dim),  # Project to feature_dim
                 nn.ReLU(inplace=True),
             )
         elif fusion == "fuse":
+            # Adaptive Fusion: learnable gate with softmax over 2 weights
             self.fusion_gate = nn.Sequential(
                 nn.Linear(feature_dim * 2, feature_dim),
                 nn.ReLU(inplace=True),
@@ -368,9 +374,10 @@ class MILClassifierV4(nn.Module):
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
                 nn.init.constant_(m.bias, 0.0)
-        nn.init.xavier_uniform_(self.global_proj.weight)
-        nn.init.constant_(self.global_proj.bias, 0.0)
-        if fusion == "concat":
+        if fusion == "cross_attention":
+            nn.init.xavier_uniform_(self.global_proj.weight)
+            nn.init.constant_(self.global_proj.bias, 0.0)
+        elif fusion == "concat":
             for m in self.fusion_proj:
                 if isinstance(m, nn.Linear):
                     nn.init.xavier_uniform_(m.weight)
@@ -398,6 +405,7 @@ class MILClassifierV4(nn.Module):
 
     def forward(self, x_patches: torch.Tensor, mask: torch.Tensor = None):
         # x_patches: (B, N+1, C, H, W)
+        # Use first N patches for MIL, last patch as global image
         B, N_plus_1, C, H, W = x_patches.shape
         N = N_plus_1 - 1
         x_local = x_patches[:, :N]  # (B, N, C, H, W)
@@ -408,30 +416,28 @@ class MILClassifierV4(nn.Module):
             feats_l, mask=mask, temperature=1.0
         )  # (B, feature_dim)
         feats_g = self._encode_global(x_global)  # (B, feature_dim)
-        feats_g_proj = self.global_proj(feats_g).unsqueeze(1)  # (B, 1, feature_dim)
 
         if self.fusion == "cross_attention":
-            # Cross-attention: global query, ALL local patches as key/value
+            feats_g_proj = self.global_proj(feats_g).unsqueeze(1)  # (B, 1, feature_dim)
             cross_attn_out, _ = self.cross_attn(
                 query=feats_g_proj, key=feats_l, value=feats_l
             )  # (B, 1, feature_dim)
             fused = cross_attn_out.squeeze(1)  # (B, feature_dim)
         elif self.fusion == "concat":
-            # Concatenate pooled local and global features, then project
             fused = torch.cat([pooled_l, feats_g], dim=1)  # (B, 2*feature_dim)
             fused = self.fusion_proj(fused)  # (B, feature_dim)
         elif self.fusion == "fuse":
-            # Adaptive fusion (weighted sum)
+            # Adaptive Fusion: learn weights for local/global, weighted sum
             fusion_input = torch.cat([pooled_l, feats_g], dim=-1)  # (B, 2*feature_dim)
             fusion_weights = self.fusion_gate(fusion_input)  # (B, 2)
             fused = (
                 fusion_weights[:, 0:1] * pooled_l + fusion_weights[:, 1:2] * feats_g
             )  # (B, feature_dim)
+            self.last_fusion_weights = fusion_weights.detach()
         else:
             raise ValueError(f"Unknown fusion method: {self.fusion}")
 
         logits = self.head(fused)
-        # Add saving of last attention weights and features
         self.last_attn_weights = attn.detach()
         self.last_global_feat = feats_g.detach()
         self.last_local_feat = pooled_l.detach()

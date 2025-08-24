@@ -8,6 +8,8 @@ import os
 import torch
 from src.data.based_data import get_dataloaders
 from src.data.dataloader import load_metadata
+
+from src.data.dataloader import load_metadata
 from src.trainer.engines import train_model, evaluate_model
 from src.utils.common import load_config, get_arg_or_config, clear_cuda_memory
 
@@ -118,6 +120,18 @@ def run_test(
     test_loss, test_acc = evaluate_model(
         model, test_loader, device=device, mode="Test", return_loss=True
     )
+    # Save the full model (architecture + weights) after test
+    if pretrained_model_path:
+        full_model_path = (
+            pretrained_model_path.replace(".pth", "_full.pth")
+            if pretrained_model_path.endswith(".pth")
+            else pretrained_model_path + "_full"
+        )
+        try:
+            torch.save(model, full_model_path)
+            print(f"Saved full model (architecture + weights) to {full_model_path}")
+        except Exception as e:
+            print(f"⚠️ Error saving full model: {e}")
     return test_loss, test_acc
 
 
@@ -163,7 +177,10 @@ if __name__ == "__main__":
 
     from src.models.based_model import get_based_model
 
-    model = get_based_model(model_type=model_type)
+    train_df, test_df, class_names = load_metadata(
+        data_folder, args.config, print_stats=False
+    )
+    model = get_based_model(model_type=model_type, num_classes=len(class_names))
 
     if args.mode == "train":
         run_train(

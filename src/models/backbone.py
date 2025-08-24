@@ -78,6 +78,93 @@ def get_timm_backbone(model_type):
         )
         feature_dim = model.classifier.in_features
         model.classifier = nn.Identity()
+    elif model_type == "maxvit_tiny":
+        model = timm_models.create_model("maxvit_tiny_tf_224.in1k", pretrained=True)
+        feature_dim = model.head.fc.in_features
+        model.head.fc = nn.Identity()
+    elif model_type == "maxvit_small":
+        model = timm_models.create_model("maxvit_small_tf_224.in1k", pretrained=True)
+        feature_dim = model.head.fc.in_features
+        model.head.fc = nn.Identity()
+    elif model_type == "maxvit_base":
+        model = timm_models.create_model("maxvit_base_tf_224.in1k", pretrained=True)
+        feature_dim = model.head.fc.in_features
+        model.head.fc = nn.Identity()
+    elif model_type == "eva02_small":
+        model = timm_models.create_model(
+            "eva02_small_patch14_224.mim_in22k",
+            pretrained=True,
+            dynamic_img_size=True,
+        )
+        # Eva02 model's head is usually called 'head'
+        # Try to get feature_dim from common attributes
+        if hasattr(model, "head") and hasattr(model.head, "in_features"):
+            feature_dim = model.head.in_features
+            model.head = nn.Identity()
+        elif hasattr(model, "num_features"):
+            feature_dim = model.num_features
+            model.head = nn.Identity()
+        else:
+            raise ValueError(
+                "Cannot determine feature_dim for eva02_small_patch14_224.mim_in22k"
+            )
+    elif model_type == "vit_small":
+        model = timm_models.create_model(
+            "vit_small_patch14_reg4_dinov2.lvd142m",
+            pretrained=True,
+            dynamic_img_size=True,
+        )
+        # Lấy feature_dim từ head nếu có, hoặc num_features
+        if hasattr(model, "head") and hasattr(model.head, "in_features"):
+            feature_dim = model.head.in_features
+            model.head = nn.Identity()
+        elif hasattr(model, "num_features"):
+            feature_dim = model.num_features
+            model.head = nn.Identity()
+        else:
+            raise ValueError(
+                "Cannot determine feature_dim for vit_small_patch14_reg4_dinov2.lvd142m"
+            )
+    elif model_type == "eva02_base":
+        model = timm_models.create_model(
+            "eva02_base_patch14_448.mim_in22k_ft_in1k",
+            pretrained=True,
+            dynamic_img_size=True,
+        )
+        if hasattr(model, "head") and hasattr(model.head, "in_features"):
+            feature_dim = model.head.in_features
+            model.head = nn.Identity()
+        elif hasattr(model, "num_features"):
+            feature_dim = model.num_features
+            model.head = nn.Identity()
+        else:
+            raise ValueError(
+                "Cannot determine feature_dim for eva02_base_patch14_448.mim_in22k_ft_in1k"
+            )
+    elif model_type == "swinv2_small":
+        model = timm_models.create_model(
+            "swinv2_small_window8_256.ms_in1k",
+            pretrained=True,
+            dynamic_img_size=True,
+        )
+        feature_dim = model.head.fc.in_features
+        model.head.fc = nn.Identity()
+    elif model_type == "swinv2_tiny":
+        model = timm_models.create_model(
+            "swinv2_tiny_window8_256.ms_in1k",
+            pretrained=True,
+            dynamic_img_size=True,
+        )
+        feature_dim = model.head.fc.in_features
+        model.head.fc = nn.Identity()
+    elif model_type == "swinv2_base":
+        model = timm_models.create_model(
+            "swinv2_base_window8_256.ms_in1k",
+            pretrained=True,
+            dynamic_img_size=True,
+        )
+        feature_dim = model.head.fc.in_features
+        model.head.fc = nn.Identity()
     else:
         raise ValueError("Unsupported timm backbone type")
     return model, feature_dim
@@ -109,8 +196,8 @@ def get_dino_backbone(model_type="dinov2_vitb14", weights=None):
         - dinov3_convnext_small
     """
     dino2_models = {
-        "dinov2_vitb14": ("facebookresearch/dinov2", "dinov2_vitb14"),
-        "dinov2_vits14": ("facebookresearch/dinov2", "dinov2_vits14"),
+        "dinov2_small": "vit_small_patch14_dinov2.lvd142m",
+        "dinov2_base": "vit_base_patch14_dinov2.lvd142m",
     }
     # HuggingFace model hub ids for dinov3
     dino3_models = {
@@ -124,16 +211,21 @@ def get_dino_backbone(model_type="dinov2_vitb14", weights=None):
     }
 
     if model_type in dino2_models:
-        repo, name = dino2_models[model_type]
-        transformer = hub.load(repo, name)
-        # Common way to get feature_dim for all DINOv2 models
-        if hasattr(transformer, "norm") and hasattr(
-            transformer.norm, "normalized_shape"
-        ):
-            feature_dim = transformer.norm.normalized_shape[0]
-        else:
-            raise RuntimeError("Cannot determine feature_dim for this DINOv2 backbone")
+        if model_type not in dino2_models:
+            raise ValueError(
+                f"Unsupported model_type: {model_type}. Choose from {list(dino2_models.keys())}"
+            )
+        transformer = timm_models.create_model(
+            dino2_models[model_type],
+            pretrained=weights is not None,
+            num_classes=0,
+            dynamic_img_size=True,
+        )
+        feature_dim = (
+            transformer.num_features
+        )  # 384 for vit_small_patch14_dinov2.lvd142m
         return transformer, feature_dim
+
     elif model_type == "dinov3_vits16":
         from huggingface_hub import hf_hub_download
         import torch
