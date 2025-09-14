@@ -48,9 +48,11 @@ def get_dataloaders(
     img_size=None,
     num_workers=None,
     pin_memory=True,
+    mode="train",  # Thêm tham số mode
 ):
     if num_workers is None:
-        num_workers = get_num_workers()
+        num_workers = 0 if mode == "test" else get_num_workers()
+        # num_workers = get_num_workers()
     if img_size is None:
         img_size = get_image_size_from_config(config_path)
     if isinstance(img_size, (list, tuple)):

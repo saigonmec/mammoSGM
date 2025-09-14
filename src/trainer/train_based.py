@@ -32,6 +32,7 @@ def prepare_data_and_model(
     config_path="config/config.yaml",
     img_size=None,
     pretrained_model_path=None,
+    mode="train",  # thêm mode để truyền vào get_dataloaders
 ):
     clear_cuda_memory()
     train_df, test_df, _ = load_metadata(data_folder, config_path)
@@ -42,6 +43,7 @@ def prepare_data_and_model(
         batch_size=batch_size,
         config_path=config_path,
         img_size=img_size,
+        mode=mode,  # Đặt mode là test để không sử dụng nhiều worker
     )
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if pretrained_model_path:
@@ -115,12 +117,14 @@ def run_test(
         config_path=config_path,
         img_size=img_size,
         pretrained_model_path=pretrained_model_path,
+        mode="test",  # Đặt mode là test để không sử dụng nhiều worker
     )
     print("\nEvaluation on Test Set:")
     test_loss, test_acc = evaluate_model(
         model, test_loader, device=device, mode="Test", return_loss=True
     )
     # Save the full model (architecture + weights) after test
+
     if pretrained_model_path:
         full_model_path = (
             pretrained_model_path.replace(".pth", "_full.pth")
@@ -133,6 +137,108 @@ def run_test(
         except Exception as e:
             print(f"⚠️ Error saving full model: {e}")
     return test_loss, test_acc
+
+
+def run_gradcam(
+    data_folder,
+    model,
+    batch_size,
+    output,
+    config_path="config/config.yaml",
+    img_size=None,
+    pretrained_model_path=None,
+):
+    import time
+
+    train_df, test_df, _, test_loader, model, device = prepare_data_and_model(
+        data_folder,
+        model,
+        batch_size,
+        config_path=config_path,
+        img_size=img_size,
+        pretrained_model_path=pretrained_model_path,
+        mode="test",
+    )
+    # Determine save path based on pretrained_model_path
+    if pretrained_model_path:
+        gradcam_model_path = (
+            pretrained_model_path.replace(".pth", "_full.pth")
+            if pretrained_model_path.endswith(".pth")
+            else pretrained_model_path + "_full"
+        )
+    else:
+        gradcam_model_path = os.path.join(
+            output, f"gradcam_{type(model).__name__}_full.pth"
+        )
+    # Use get_gradcam_layer to determine the correct gradcam layer
+    model_name = type(model).__name__.lower()
+    gradcam_layer = get_gradcam_layer(model, model_name)
+    # Default normalization (same as A.Normalize([0.5]*3, [0.5]*3))
+    normalize = {
+        "mean": [0.5, 0.5, 0.5],
+        "std": [0.5, 0.5, 0.5],
+    }
+    # Calculate real inference time using a dummy input
+    if isinstance(img_size, int):
+        img_size = (img_size, img_size)
+    dummy_input = torch.randn(1, 3, img_size[0], img_size[1]).to(device)
+    model.eval()
+    with torch.no_grad():
+        start = time.time()
+        _ = model(dummy_input)
+        end = time.time()
+        inference_time = end - start  # seconds for one forward pass
+    # Save dict with model, input_size, gradcam_layer, model_name, normalize, inference_time
+    model_info = {
+        "model": model,
+        "input_size": img_size,
+        "gradcam_layer": gradcam_layer,
+        "model_name": type(model).__name__,
+        "normalize": normalize,
+        "inference_time": inference_time,
+    }
+    try:
+        torch.save(model_info, gradcam_model_path)
+        print(f"Saved full model and info for GradCAM to {gradcam_model_path}")
+        print("Model info:")
+        for k, v in model_info.items():
+            if k != "model":
+                print(f"  {k}: {v}")
+    except Exception as e:
+        print(f"⚠️ Error saving GradCAM model: {e}")
+    return gradcam_model_path
+
+
+def get_gradcam_layer(model, model_name):
+    """
+    Return the name of the appropriate layer for GradCAM based on model_name.
+    If not matched, return the last layer's name.
+    """
+    # ResNet, ResNeXt, ResNeSt
+    if "resnet" in model_name or "resnext" in model_name or "resnest" in model_name:
+        return "layer4"
+    # ConvNeXtV2 Tiny
+    elif "convnextv2_tiny" in model_name:
+        return "stages.3.blocks.2.conv_dw"
+    # ConvNeXt, ConvNeXtV2
+    elif "convnext" in model_name:
+        return "stages.3.blocks.2.conv_dw"
+    # MaxViT Tiny
+    elif "maxvit_tiny" in model_name:
+        return "stages.-1.blocks.-1.conv.norm2"
+    # RegNetY
+    elif "regnety" in model_name:
+        return "s4.b1.conv3.conv"
+    # EfficientNet, EfficientNetV2
+    elif "efficientnet" in model_name:
+        return "blocks.5.-1.conv_pwl"
+    # If not matched, return the last layer's name
+    else:
+        # Try to get the last layer's name
+        children = list(model.named_children())
+        if children:
+            return children[-1][0]
+        return None
 
 
 if __name__ == "__main__":
@@ -150,7 +256,9 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float)
     parser.add_argument("--pretrained_model_path", type=str, default=None)
     parser.add_argument("--output", type=str)
-    parser.add_argument("--mode", type=str, choices=["train", "test"], default="train")
+    parser.add_argument(
+        "--mode", type=str, choices=["train", "test", "gradcam"], default="train"
+    )
     parser.add_argument("--patience", type=int)
     parser.add_argument(
         "--loss_type", type=str, choices=["ce", "focal", "focal2", "ldam"]
@@ -201,6 +309,16 @@ if __name__ == "__main__":
         )
     elif args.mode == "test":
         run_test(
+            data_folder=data_folder,
+            model=model,
+            batch_size=batch_size,
+            output=output,
+            config_path=args.config,
+            img_size=img_size,
+            pretrained_model_path=pretrained_model_path,
+        )
+    elif args.mode == "gradcam":
+        run_gradcam(
             data_folder=data_folder,
             model=model,
             batch_size=batch_size,

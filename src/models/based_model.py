@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="dinov2")
 
 
 def get_based_model(model_type="resnet50", num_classes=2):
-    if model_type in ["resnet50", "resnet101", "resnext50"]:
+    if model_type in ["resnet34", "resnet50", "resnet101", "resnext50", "resnet152"]:
         backbone, feature_dim = get_resnet_backbone(model_type)
         # Replace the head with a linear classifier
         model = backbone

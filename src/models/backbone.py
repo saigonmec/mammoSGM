@@ -24,6 +24,14 @@ def get_resnet_backbone(model_type="resnet50"):
         model = models.resnet101(weights=models.ResNet101_Weights.IMAGENET1K_V1)
         feature_dim = model.fc.in_features
         model.fc = nn.Identity()
+    elif model_type == "resnet152":
+        model = models.resnet152(weights=models.ResNet152_Weights.IMAGENET1K_V1)
+        feature_dim = model.fc.in_features
+        model.fc = nn.Identity()
+    elif model_type == "resnet34":
+        model = models.resnet34(weights=models.ResNet34_Weights.IMAGENET1K_V1)
+        feature_dim = model.fc.in_features
+        model.fc = nn.Identity()
     elif model_type == "resnext50":
         model = models.resnext50_32x4d(
             weights=models.ResNeXt50_32X4D_Weights.IMAGENET1K_V1

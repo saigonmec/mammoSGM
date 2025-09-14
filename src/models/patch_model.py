@@ -34,7 +34,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="dinov2")
 def get_patch_model(
     model_type="resnet50", num_classes=2, num_patches=2, arch_type="patch_resnet"
 ):
-    if model_type in ["resnet50", "resnet101", "resnext50"]:
+    if model_type in ["resnet34", "resnet50", "resnet101", "resnext50", "resnet152"]:
         backbone, feature_dim = get_resnet_backbone(model_type)
     elif model_type in [
         "resnest50",
