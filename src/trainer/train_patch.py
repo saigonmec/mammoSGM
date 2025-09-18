@@ -205,8 +205,20 @@ if __name__ == "__main__":
 
     from src.models.patch_model import get_patch_model
 
+    train_df, test_df, class_names = load_metadata(
+        data_folder, args.config, target_column=target_column, print_stats=False
+    )
+    num_classes = (
+        len(class_names)
+        if class_names is not None and not class_names.empty
+        else len(train_df["cancer"].unique())
+    )
+
     model = get_patch_model(
-        model_type=model_type, num_patches=num_patches, arch_type=arch_type
+        model_type=model_type,
+        num_patches=num_patches,
+        arch_type=arch_type,
+        num_classes=num_classes,  # assuming binary classification; adjust as needed
     )
 
     if args.mode == "train":
