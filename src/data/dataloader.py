@@ -117,8 +117,15 @@ def get_model_key(
     return f"{base_model_key}_{patch_suffix}"
 
 
-def load_metadata(data_folder, config_path="config/config.yaml", print_stats=True):
-    target_column = get_target_column_from_config(config_path)
+def load_metadata(
+    data_folder,
+    config_path="config/config.yaml",
+    print_stats=True,
+    target_column=None,
+):
+    # Ưu tiên target_column truyền vào, nếu không thì lấy từ config
+    if target_column is None:
+        target_column = get_target_column_from_config(config_path)
     metadata_path = os.path.join(data_folder, "metadata.csv")
     df = pd.read_csv(metadata_path)
     df = df.drop_duplicates(subset=["link"])

@@ -59,11 +59,39 @@ def evaluate_model(
     avg_loss = total_loss / total
     # Tính các chỉ số
     try:
-        auc = (
-            roc_auc_score(all_labels, all_probs) if len(set(all_labels)) == 2 else None
-        )
+        if len(set(all_labels)) == 2:
+            auc = roc_auc_score(all_labels, all_probs)
+            macro_auc = None
+            weighted_auc = None
+        else:
+            auc = None
+            # Tính macro_auc và weighted_auc cho đa lớp
+            try:
+                macro_auc = roc_auc_score(
+                    all_labels,
+                    torch.nn.functional.one_hot(
+                        torch.tensor(all_preds), num_classes=len(set(all_labels))
+                    ),
+                    multi_class="ovo",
+                    average="macro",
+                )
+            except Exception:
+                macro_auc = None
+            try:
+                weighted_auc = roc_auc_score(
+                    all_labels,
+                    torch.nn.functional.one_hot(
+                        torch.tensor(all_preds), num_classes=len(set(all_labels))
+                    ),
+                    multi_class="ovo",
+                    average="weighted",
+                )
+            except Exception:
+                weighted_auc = None
     except Exception:
         auc = None
+        macro_auc = None
+        weighted_auc = None
     # Calculate precision and recall safely for binary/multiclass and degenerate cases
     try:
         precision = precision_score(
@@ -99,6 +127,10 @@ def evaluate_model(
     acc_loss_str = f"{mode} Accuracy : {acc * 100:.2f}% | Loss: {avg_loss:.4f}"
     if auc is not None:
         acc_loss_str += f" | AUC: {auc * 100:.2f}%"
+    if macro_auc is not None:
+        acc_loss_str += f" | Macro AUC: {macro_auc * 100:.2f}%"
+    if weighted_auc is not None:
+        acc_loss_str += f" | Weighted AUC: {weighted_auc * 100:.2f}%"
     print(acc_loss_str)
     print(
         f"{mode} Precision: {precision * 100:.2f}% | Sens: {recall * 100:.2f}%"
@@ -112,12 +144,26 @@ def evaluate_model(
             best_str += f" | Loss: {evaluate_model.best_loss:.4f}"
         if hasattr(evaluate_model, "best_auc") and evaluate_model.best_auc is not None:
             best_str += f" | AUC: {evaluate_model.best_auc * 100:.2f}%"
+        if (
+            hasattr(evaluate_model, "best_macro_auc")
+            and evaluate_model.best_macro_auc is not None
+        ):
+            best_str += f" | Macro AUC: {evaluate_model.best_macro_auc * 100:.2f}%"
+        if (
+            hasattr(evaluate_model, "best_weighted_auc")
+            and evaluate_model.best_weighted_auc is not None
+        ):
+            best_str += (
+                f" | Weighted AUC: {evaluate_model.best_weighted_auc * 100:.2f}%"
+            )
         print(best_str)
     # Cập nhật best nếu tốt hơn
     if not hasattr(evaluate_model, "best_acc") or acc > evaluate_model.best_acc:
         evaluate_model.best_acc = acc
         evaluate_model.best_loss = avg_loss
         evaluate_model.best_auc = auc
+        evaluate_model.best_macro_auc = macro_auc
+        evaluate_model.best_weighted_auc = weighted_auc
 
     print(classification_report(all_labels, all_preds, digits=4, zero_division=0))
 

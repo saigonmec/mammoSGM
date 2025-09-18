@@ -22,9 +22,12 @@ def prepare_data_and_model(
     arch_type="patch_resnet",
     pretrained_model_path=None,
     img_size=None,
+    target_column=None,  # thêm target_column
 ):
     clear_cuda_memory()
-    train_df, test_df, _ = load_metadata(data_folder, config_path)
+    train_df, test_df, _ = load_metadata(
+        data_folder, config_path, target_column=target_column
+    )
     train_loader, test_loader = get_dataloaders(
         train_df,
         test_df,
@@ -61,7 +64,8 @@ def run_train(
     loss_type="ce",
     model_type=None,
     img_size=None,
-    pretrained_model_path=None,  # thêm tham số này
+    pretrained_model_path=None,
+    target_column=None,  # thêm target_column
 ):
     train_df, test_df, train_loader, test_loader, model, device = (
         prepare_data_and_model(
@@ -71,8 +75,9 @@ def run_train(
             config_path=config_path,
             num_patches=num_patches,
             arch_type=arch_type,
-            pretrained_model_path=pretrained_model_path,  # truyền vào đây
+            pretrained_model_path=pretrained_model_path,
             img_size=img_size,
+            target_column=target_column,
         )
     )
     model_name = f"{model_type}" if model_type else arch_type
@@ -105,6 +110,7 @@ def run_test(
     arch_type="patch_resnet",
     pretrained_model_path=None,
     img_size=None,
+    target_column=None,  # thêm target_column
 ):
     train_df, test_df, _, test_loader, model, device = prepare_data_and_model(
         data_folder,
@@ -115,6 +121,7 @@ def run_test(
         arch_type=arch_type,
         pretrained_model_path=pretrained_model_path,
         img_size=img_size,
+        target_column=target_column,
     )
     print("\nEvaluation on Test Set:")
     test_loss, test_acc = evaluate_model(
@@ -167,6 +174,9 @@ if __name__ == "__main__":
         ],
     )
     parser.add_argument("--img_size", type=str, default=None)
+    parser.add_argument(
+        "--target_column", type=str, default=None, help="Name of target column"
+    )
 
     args = parser.parse_args()
     config = load_config(args.config)
@@ -187,6 +197,9 @@ if __name__ == "__main__":
         args.arch_type, config.get("arch_type"), "patch_resnet"
     )
     img_size = get_arg_or_config(args.img_size, config.get("image_size"), None)
+    target_column = get_arg_or_config(
+        args.target_column, config.get("target_column"), None
+    )
     if img_size is not None and isinstance(img_size, str):
         img_size = parse_img_size(img_size)
 
@@ -211,7 +224,8 @@ if __name__ == "__main__":
             loss_type=loss_type,
             model_type=model_type,
             img_size=img_size,
-            pretrained_model_path=pretrained_model_path,  # truyền vào đây
+            pretrained_model_path=pretrained_model_path,
+            target_column=target_column,
         )
     elif args.mode == "test":
         run_test(
@@ -224,4 +238,5 @@ if __name__ == "__main__":
             arch_type=arch_type,
             pretrained_model_path=pretrained_model_path,
             img_size=img_size,
+            target_column=target_column,
         )

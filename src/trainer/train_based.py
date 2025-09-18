@@ -33,9 +33,12 @@ def prepare_data_and_model(
     img_size=None,
     pretrained_model_path=None,
     mode="train",  # thêm mode để truyền vào get_dataloaders
+    target_column=None,  # thêm target_column
 ):
     clear_cuda_memory()
-    train_df, test_df, _ = load_metadata(data_folder, config_path)
+    train_df, test_df, _ = load_metadata(
+        data_folder, config_path, target_column=target_column
+    )
     train_loader, test_loader = get_dataloaders(
         train_df,
         test_df,
@@ -71,6 +74,7 @@ def run_train(
     loss_type="ce",
     model_type=None,  # thêm model_type để truyền vào
     pretrained_model_path=None,  # thêm tham số này
+    target_column=None,  # thêm target_column
 ):
     train_df, test_df, train_loader, test_loader, model, device = (
         prepare_data_and_model(
@@ -80,6 +84,7 @@ def run_train(
             config_path=config_path,
             img_size=img_size,
             pretrained_model_path=pretrained_model_path,  # truyền vào đây
+            target_column=target_column,
         )
     )
     model_name = f"{model_type}" if model_type else "based"
@@ -109,6 +114,7 @@ def run_test(
     config_path="config/config.yaml",
     img_size=None,
     pretrained_model_path=None,
+    target_column=None,  # thêm target_column
 ):
     train_df, test_df, _, test_loader, model, device = prepare_data_and_model(
         data_folder,
@@ -118,6 +124,7 @@ def run_test(
         img_size=img_size,
         pretrained_model_path=pretrained_model_path,
         mode="test",  # Đặt mode là test để không sử dụng nhiều worker
+        target_column=target_column,
     )
     print("\nEvaluation on Test Set:")
     test_loss, test_acc = evaluate_model(
@@ -147,6 +154,7 @@ def run_gradcam(
     config_path="config/config.yaml",
     img_size=None,
     pretrained_model_path=None,
+    target_column=None,  # thêm target_column
 ):
     import time
 
@@ -158,6 +166,7 @@ def run_gradcam(
         img_size=img_size,
         pretrained_model_path=pretrained_model_path,
         mode="test",
+        target_column=target_column,
     )
     # Determine save path based on pretrained_model_path
     if pretrained_model_path:
@@ -266,6 +275,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--img_size", type=str, default=None, help="Image size, e.g. 448 or 448x448"
     )
+    parser.add_argument(
+        "--target_column", type=str, default=None, help="Name of target column"
+    )
 
     args = parser.parse_args()
     config = load_config(args.config)
@@ -282,13 +294,16 @@ if __name__ == "__main__":
     patience = get_arg_or_config(args.patience, config.get("patience"), 50)
     loss_type = get_arg_or_config(args.loss_type, config.get("loss_type"), "ce")
     img_size = get_arg_or_config(args.img_size, config.get("image_size"), None)
+    target_column = get_arg_or_config(
+        args.target_column, config.get("target_column"), None
+    )
     if img_size is not None and isinstance(img_size, str):
         img_size = parse_img_size(img_size)
 
     from src.models.based_model import get_based_model
 
     train_df, test_df, class_names = load_metadata(
-        data_folder, args.config, print_stats=False
+        data_folder, args.config, print_stats=False, target_column=target_column
     )
     model = get_based_model(model_type=model_type, num_classes=len(class_names))
 
@@ -304,8 +319,9 @@ if __name__ == "__main__":
             img_size=img_size,
             patience=patience,
             loss_type=loss_type,
-            model_type=model_type,  # truyền vào để tạo model_name
-            pretrained_model_path=pretrained_model_path,  # truyền vào đây
+            model_type=model_type,
+            pretrained_model_path=pretrained_model_path,
+            target_column=target_column,
         )
     elif args.mode == "test":
         run_test(
@@ -316,6 +332,7 @@ if __name__ == "__main__":
             config_path=args.config,
             img_size=img_size,
             pretrained_model_path=pretrained_model_path,
+            target_column=target_column,
         )
     elif args.mode == "gradcam":
         run_gradcam(
@@ -326,4 +343,5 @@ if __name__ == "__main__":
             config_path=args.config,
             img_size=img_size,
             pretrained_model_path=pretrained_model_path,
+            target_column=target_column,
         )
