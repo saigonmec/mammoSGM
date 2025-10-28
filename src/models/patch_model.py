@@ -54,6 +54,8 @@ def get_patch_model(
         "swinv2_tiny",
         "swinv2_base",
         "swinv2_small",
+        "mambaout_tiny",
+        "mamba_t",
     ]:
         backbone, feature_dim = get_timm_backbone(model_type)
     elif model_type == "fastervit":

@@ -173,6 +173,66 @@ def get_timm_backbone(model_type):
         )
         feature_dim = model.head.fc.in_features
         model.head.fc = nn.Identity()
+    # --- MambaVision-T support ---
+    elif model_type == "mamba_t":
+        from transformers import AutoModelForImageClassification
+
+        model = AutoModelForImageClassification.from_pretrained(
+            "nvidia/MambaVision-T-1K",
+            trust_remote_code=True,
+        )
+        feature_dim = None
+        # Ưu tiên lấy trực tiếp
+        if hasattr(model, "head") and hasattr(model.head, "in_features"):
+            feature_dim = model.head.in_features
+            model.head = nn.Identity()
+        elif hasattr(model, "fc") and hasattr(model.fc, "in_features"):
+            feature_dim = model.fc.in_features
+            model.fc = nn.Identity()
+        elif hasattr(model, "classifier") and hasattr(model.classifier, "in_features"):
+            feature_dim = model.classifier.in_features
+            model.classifier = nn.Identity()
+        # Nếu không có, kiểm tra trong .model và chuẩn hóa về model.head
+        elif (
+            hasattr(model, "model")
+            and hasattr(model.model, "head")
+            and hasattr(model.model.head, "in_features")
+        ):
+            model.head = model.model.head  # chuẩn hóa về model.head
+            feature_dim = model.head.in_features
+            model.head = nn.Identity()
+        else:
+            print("DEBUG: model.head =", getattr(model, "head", None))
+            print("DEBUG: model.fc =", getattr(model, "fc", None))
+            print("DEBUG: model.classifier =", getattr(model, "classifier", None))
+            if hasattr(model, "model"):
+                print("DEBUG: model.model.head =", getattr(model.model, "head", None))
+                print("DEBUG: model.model.fc =", getattr(model.model, "fc", None))
+                print(
+                    "DEBUG: model.model.classifier =",
+                    getattr(model.model, "classifier", None),
+                )
+            print("DEBUG: model children (last 5):")
+            for name, layer in list(model.named_children())[-5:]:
+                print(f"  {name}: {layer}")
+            raise RuntimeError("Cannot determine feature_dim for MambaVision-T-1K")
+        return model, feature_dim
+    # --- End MambaVision-T support ---
+    # --- MambaOut-Tiny support ---
+    elif model_type == "mambaout_tiny":
+        model = timm_models.create_model("mambaout_tiny.in1k", pretrained=True)
+        # Use head.fc for feature_dim and replace with Identity
+        if (
+            hasattr(model, "head")
+            and hasattr(model.head, "fc")
+            and hasattr(model.head.fc, "in_features")
+        ):
+            feature_dim = model.head.fc.in_features
+            model.head.fc = nn.Identity()
+        else:
+            raise RuntimeError("Cannot determine feature_dim for mambaout_tiny.in1k")
+        return model, feature_dim
+    # --- End MambaOut-Tiny support ---
     else:
         raise ValueError("Unsupported timm backbone type")
     return model, feature_dim

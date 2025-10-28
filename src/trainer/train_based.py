@@ -205,6 +205,8 @@ def run_gradcam(
         "model_name": type(model).__name__,
         "normalize": normalize,
         "inference_time": inference_time,
+        "num_patches": 1,
+        "arch_type": "based",
     }
     try:
         torch.save(model_info, gradcam_model_path)

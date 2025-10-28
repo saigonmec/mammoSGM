@@ -36,6 +36,8 @@ def get_based_model(model_type="resnet50", num_classes=2):
         "swinv2_tiny",
         "swinv2_base",
         "swinv2_small",
+        "mambaout_tiny",
+        "mamba_t",
     ]:
         model, feature_dim = get_timm_backbone(model_type)
         # Replace the head with a linear classifier for all timm backbones
