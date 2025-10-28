@@ -29,11 +29,12 @@
 
    Adjust the arguments as needed for your environment.
 3. **Run train_patch_with_metrics.py (to report metrics on test data)**
-
+```bash
 import os, shutil
 from pathlib import Path
 
 # %cd /mnt/data/SGM_PROJECT # cd to the project directory
+
 
 PROJECT_DIR = os.getcwd()  # same as %pwd but pure Python
 TARGET_COLUMN = "cancer"
@@ -93,7 +94,8 @@ for weights_folder_name in os.listdir(Path(f"{RESULTS_FOLDER}/{SETTING}")):
                 --pretrained_model_path "{PRETRAINED_MODEL_PATH}" \
                 --setting "{SETTING}" \
                 --backbone_name "{BACKBONE}"
-                
+```
+
 4. **Project structure**
 
    ```
