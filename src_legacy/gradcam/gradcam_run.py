@@ -4,9 +4,9 @@ import sys
 # ===== FORCE RELOAD ALL GRADCAM MODULES =====
 # Remove ALL cached gradcam modules before importing
 modules_to_reload = [
-    "src.gradcam.gradcam_utils_patch",
-    "src.gradcam.gradcam_utils_based",
-    "src.gradcam",
+    "src_legacy.gradcam.gradcam_utils_patch",
+    "src_legacy.gradcam.gradcam_utils_based",
+    "src_legacy.gradcam",
 ]
 for module_name in modules_to_reload:
     if module_name in sys.modules:
@@ -21,8 +21,8 @@ import argparse
 from PIL import Image
 import numpy as np
 
-from src.gradcam.gradcam_utils_based import pre_gradcam, post_gradcam
-from src.gradcam.gradcam_utils_patch import pre_mil_gradcam, split_image_into_patches
+from src_legacy.gradcam.gradcam_utils_based import pre_gradcam, post_gradcam
+from src_legacy.gradcam.gradcam_utils_patch import pre_mil_gradcam, split_image_into_patches
 
 
 def load_data_bbx3(data_folder):
@@ -162,7 +162,7 @@ def main():
             gt,
             image_path=image_path,
         )
-        from src.gradcam.gradcam_utils_based import (
+        from src_legacy.gradcam.gradcam_utils_based import (
             gradcam,
             gradcam_plus_plus,
             post_gradcam,
@@ -209,10 +209,10 @@ def main():
             image_path=image_path,
         )
 
-        from src.gradcam.gradcam_utils_patch import mil_gradcam
+        from src_legacy.gradcam.gradcam_utils_patch import mil_gradcam
 
         # Import post_gradcam từ based
-        from src.gradcam.gradcam_utils_based import post_gradcam
+        from src_legacy.gradcam.gradcam_utils_based import post_gradcam
 
         gradcam_map = mil_gradcam(model_out, input_tensor, target_layer, class_idx)
 

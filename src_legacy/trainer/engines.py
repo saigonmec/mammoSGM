@@ -15,8 +15,8 @@ from sklearn.metrics import (
 import csv
 from datetime import datetime
 
-from src.utils.loss import FocalLoss, LDAMLoss, FocalLoss2
-from src.utils.plot import plot_metrics, plot_confusion_matrix
+from src_legacy.utils.loss import FocalLoss, LDAMLoss, FocalLoss2
+from src_legacy.utils.plot import plot_metrics, plot_confusion_matrix
 
 
 def evaluate_model(

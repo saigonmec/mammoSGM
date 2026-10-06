@@ -10,7 +10,7 @@ from numpy import ndarray
 import matplotlib.pyplot as plt
 from skimage.filters import threshold_otsu
 import math
-# from src.data.patch_dataset import split_image_into_patches
+# from src_legacy.data.patch_dataset import split_image_into_patches
 
 
 def split_image_into_patches(

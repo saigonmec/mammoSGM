@@ -6,11 +6,11 @@ warnings.filterwarnings("ignore", category=UserWarning)
 import argparse
 import os
 import torch
-from src.data.patch_dataset import get_dataloaders
-from src.data.dataloader import load_metadata
-from src.trainer.engines import train_model, evaluate_model
-from src.utils.common import load_config, get_arg_or_config, clear_cuda_memory
-from src.trainer.train_based import parse_img_size
+from src_legacy.data.patch_dataset import get_dataloaders
+from src_legacy.data.dataloader import load_metadata
+from src_legacy.trainer.engines import train_model, evaluate_model
+from src_legacy.utils.common import load_config, get_arg_or_config, clear_cuda_memory
+from src_legacy.trainer.train_based import parse_img_size
 
 
 def prepare_data_and_model(
@@ -391,7 +391,7 @@ if __name__ == "__main__":
     if img_size is not None and isinstance(img_size, str):
         img_size = parse_img_size(img_size)
 
-    from src.models.patch_model import get_patch_model
+    from src_legacy.models.patch_model import get_patch_model
 
     train_df, test_df, class_names = load_metadata(
         data_folder, args.config, target_column=target_column, print_stats=False

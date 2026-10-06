@@ -1,0 +1,11 @@
+torch>=2.1
+torchvision
+timm>=1.0
+albumentations>=2.0.0   # augment.py uses the 2.x API (scale_range, num_holes_range, fill, ...)
+opencv-python
+numpy
+pandas
+Pillow
+pyyaml
+tqdm
+matplotlib              # plots / Grad-CAM figures (optional; skipped if missing)

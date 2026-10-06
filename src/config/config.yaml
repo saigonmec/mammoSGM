@@ -1,0 +1,29 @@
+# Defaults for src.trainer.train_based / train_patch (the settings recommended in README.md).
+# The command line overrides every value here.
+config:
+  data_folder: "your_data_folder"     # folder with metadata.csv + the YOLO breast crops
+  target_column: "cancer"             # label column in metadata.csv
+  output: "output"                    # each run gets output/<run_name>/
+  model_type: "convnextv2_tiny"       # or resnet50 (see src/models/backbone.py for the full list)
+  img_size: 448                       # network input: every image (based) / every strip + global view (MILv4a)
+  batch_size: 16
+  num_epochs: 300                     # upper bound; early stopping decides
+  patience: 40                        # epochs without validation improvement before stopping
+  lr: 0.0001
+  warmup_epochs: 3
+  lr_patience: 10                     # halve the LR after this many epochs without val-loss improvement
+  monitor: "auc"                      # validation metric for model selection: auc | acc | loss
+  val_ratio: 0.15                     # share of TRAIN patients held out as validation (if no "val" split)
+  loss_type: "ce"                     # ce | focal | focal2 | ldam
+  balance: "sampler"                  # sampler | loss | none (one mechanism, never both)
+  seed: 42
+  # --- MILv4a (train_patch) ---
+  arch_type: "mil_v4a"
+  num_patches: 3                      # strips; the whole crop is added as the extra "global" item
+  overlap_ratio: 0.2                  # overlap between neighbouring strips
+  local_scale: 2.0                    # strips are cut from a copy (img_size x local_scale) wide; ~ crop width / 448
+  aux_weight: 0.5                     # weight of the per-branch auxiliary losses
+  branch_dropout: 0.2                 # prob. of hiding each branch from the fusion head while training
+  neck_dim: 512
+  top_t: 0.05                         # share of feature-map cells pooled by the saliency (top-t%) heads
+  backbone_lr_mult: 1.0               # LR of the pretrained backbone = lr x this

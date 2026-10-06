@@ -5,6 +5,7 @@
 ._*
 .Spotlight-V100
 .Trashes
+tests
 
 # Windows
 Thumbs.db
@@ -71,3 +72,9 @@ runs/
 wandb/
 checkpoints/
 *.log
+
+# Training / evaluation outputs (src.trainer, src.gradcam default --output)
+output/
+
+# large sample data / weights downloaded from huggingface.co/TommyNgx/sampleSGM
+tests/sampleSGM/

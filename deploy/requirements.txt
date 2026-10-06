@@ -1,0 +1,6 @@
+torch>=2.1
+torchvision
+timm>=1.0
+numpy
+opencv-python
+Pillow
